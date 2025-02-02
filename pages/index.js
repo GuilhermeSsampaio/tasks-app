@@ -1,114 +1,338 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Checkbox, Button, TextField } from "@mui/material";
+import { useState, useRef, useEffect } from "react";
+import FormGroup from "@mui/material/FormGroup";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import { styled } from "@mui/material/styles";
+import AddCircleIcon from "@mui/icons-material/AddCircle";
+import SaveIcon from "@mui/icons-material/Save";
+import { red, grey } from "@mui/material/colors";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const CustomCheckbox = styled(Checkbox)(({ theme }) => ({
+  color: grey[500], // Cor padrão da borda
+  "& .MuiSvgIcon-root": {
+    fill: grey[500], // Cor de preenchimento quando não marcado
+  },
+  "&.Mui-checked": {
+    color: "#FF5A60", // Cor quando o checkbox está marcado
+    "& .MuiSvgIcon-root": {
+      fill: "#FF5A60", // Cor de preenchimento quando marcado
+    },
+  },
+  transform: "scale(1.5)", // Aumenta o tamanho do checkbox
+}));
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const CustomFormControlLabel = styled(FormControlLabel)(({ theme }) => ({
+  ".MuiFormControlLabel-label": {
+    fontSize: "1.5rem", // Aumenta o tamanho do label
+  },
+}));
 
 export default function Home() {
-  return (
-    <div
-      className={`${geistSans.variable} ${geistMono.variable} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [items, setItems] = useState([]);
+  const [newLabel, setNewLabel] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const [holdingItemId, setHoldingItemId] = useState(null);
+  const [editingItemId, setEditingItemId] = useState(null);
+  const inputRef = useRef(null);
+  const addContainerRef = useRef(null);
+  const editContainerRef = useRef(null);
+  const deleteContainerRef = useRef(null);
+  const timerRef = useRef(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    // Buscar jobs da API
+    const fetchJobs = async () => {
+      const response = await fetch("/api/jobs");
+      const data = await response.json();
+      setItems(data);
+    };
+
+    fetchJobs();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        (addContainerRef.current &&
+          !addContainerRef.current.contains(event.target)) ||
+        (editContainerRef.current &&
+          !editContainerRef.current.contains(event.target)) ||
+        (deleteContainerRef.current &&
+          !deleteContainerRef.current.contains(event.target))
+      ) {
+        setIsAdding(false);
+        setIsEditing(false);
+        setIsHolding(false);
+        setHoldingItemId(null);
+        setEditingItemId(null);
+      }
+    };
+
+    if (isAdding || isEditing || isHolding) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isAdding, isEditing, isHolding]);
+
+  const handleJobCheckbox = async (id) => {
+    const updatedItems = items.map((item) =>
+      item.id === id ? { ...item, checked: !item.checked } : item
+    );
+    setItems(updatedItems);
+
+    // Atualizar o estado do job no banco de dados
+    const job = updatedItems.find((item) => item.id === id);
+    await fetch("/api/jobs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(job),
+    });
+  };
+
+  const handleAddItem = async () => {
+    if (newLabel.trim() !== "") {
+      const newItem = {
+        id: items.length + 1,
+        label: newLabel,
+        checked: false,
+      };
+      setItems([...items, newItem]);
+      setNewLabel(""); // Limpa o input após adicionar o item
+      setIsAdding(false); // Volta ao estado normal
+
+      // Adicionar o novo job ao banco de dados
+      await fetch("/api/jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newItem),
+      });
+    }
+  };
+
+  const handleInputChange = (event) => {
+    setNewLabel(event.target.value);
+  };
+
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter") {
+      if (isEditing) {
+        handleEditItem(editingItemId);
+      } else {
+        handleAddItem();
+      }
+    }
+  };
+
+  const handleStartAdding = () => {
+    setIsAdding(true);
+  };
+
+  const handleMouseDown = (id) => {
+    timerRef.current = setTimeout(() => {
+      setIsHolding(true);
+      setHoldingItemId(id);
+    }, 1000); // 1 segundo para detectar o clique longo
+  };
+
+  const handleMouseUp = () => {
+    clearTimeout(timerRef.current);
+  };
+
+  const handleStartEditing = (id) => {
+    setIsEditing(true);
+    setEditingItemId(id);
+    const itemToEdit = items.find((item) => item.id === id);
+    setNewLabel(itemToEdit.label);
+  };
+
+  const handleEditItem = async (id) => {
+    if (newLabel.trim() !== "") {
+      const updatedItems = items.map((item) =>
+        item.id === id ? { ...item, label: newLabel } : item
+      );
+      setItems(updatedItems);
+      setNewLabel(""); // Limpa o input após editar o item
+      setIsEditing(false);
+      setEditingItemId(null);
+      setIsHolding(false);
+      setHoldingItemId(null);
+
+      // Atualizar o job no banco de dados
+      await fetch(`/api/jobs?id=${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ label: newLabel }),
+      });
+    }
+    closeBar();
+  };
+
+  const closeBar = () => {
+    setIsEditing(false);
+  };
+  const handleDeleteItem = async (id) => {
+    const response = await fetch(`/api/jobs?id=${id}`, { method: "DELETE" });
+    if (response.ok) {
+      setItems(items.filter((item) => item.id !== id));
+    }
+  };
+
+  return (
+    <>
+      <div className="container mt-16 pl-6">
+        <h2 className="font-bold text-3xl">tasked</h2>
+      </div>
+      <div className="container pl-6 bg-light ">
+        <FormGroup>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              onMouseDown={() => handleMouseDown(item.id)}
+              onMouseUp={handleMouseUp}
+              onTouchStart={() => handleMouseDown(item.id)}
+              onTouchEnd={handleMouseUp}
+            >
+              <CustomFormControlLabel
+                control={
+                  <CustomCheckbox
+                    className="custom-checkbox"
+                    checked={item.checked}
+                    color="primary"
+                    onChange={() => handleJobCheckbox(item.id)}
+                  />
+                }
+                label={
+                  <span className={item.checked ? "line-through" : ""}>
+                    {item.label}
+                  </span>
+                }
+              />
+              {isHolding && holdingItemId === item.id && (
+                <div className="flex space-x-2" ref={editContainerRef}>
+                  <Button
+                    style={{
+                      backgroundColor: "blue",
+                      color: "white",
+                      fontWeight: "bold",
+                      marginRight: 10,
+                    }}
+                    onClick={() => handleStartEditing(item.id)}
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    style={{
+                      backgroundColor: "red",
+                      color: "white",
+                      fontWeight: "bold",
+                      marginRight: 10,
+                    }}
+                    onClick={() => handleDeleteItem(item.id)}
+                  >
+                    Apagar
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+          {isAdding && (
+            <div className="flex items-center" ref={addContainerRef}>
+              <CustomFormControlLabel
+                control={
+                  <CustomCheckbox
+                    className="custom-checkbox"
+                    checked={false}
+                    color="primary"
+                    disabled
+                  />
+                }
+                label={
+                  <TextField
+                    inputRef={inputRef}
+                    type="text"
+                    value={newLabel}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyPress}
+                    placeholder="Novo item"
+                    variant="standard"
+                    InputProps={{
+                      style: { fontSize: "1.5rem", color: "blue" }, // Ajusta o tamanho da fonte e a cor do texto
+                    }}
+                  />
+                }
+              />
+              <Button
+                style={{
+                  backgroundColor: "blue",
+                  color: "white",
+                  fontWeight: "bold",
+                  marginRight: 10,
+                }}
+                onClick={handleAddItem}
+              >
+                Ok
+              </Button>
+            </div>
+          )}
+          {isEditing && (
+            <div className="flex items-center" ref={editContainerRef}>
+              <CustomFormControlLabel
+                control={
+                  <CustomCheckbox
+                    className="custom-checkbox"
+                    checked={false}
+                    color="primary"
+                    disabled
+                  />
+                }
+                label={
+                  <TextField
+                    inputRef={inputRef}
+                    type="text"
+                    value={newLabel}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyPress}
+                    placeholder="Editar item"
+                    variant="standard"
+                    InputProps={{
+                      style: { fontSize: "1.5rem", color: "blue" }, // Ajusta o tamanho da fonte e a cor do texto
+                    }}
+                  />
+                }
+              />
+              <Button
+                style={{
+                  backgroundColor: "blue",
+                  color: "white",
+                  fontWeight: "bold",
+                  marginRight: 10,
+                }}
+                onClick={() => handleEditItem(editingItemId)}
+              >
+                Ok
+              </Button>
+            </div>
+          )}
+        </FormGroup>
+        <div className="absolute bottom-0 right-0 m-4 flex space-x-4">
+          <Button onClick={isAdding ? handleAddItem : handleStartAdding}>
+            <AddCircleIcon sx={{ color: red[500], fontSize: 70 }} />
+          </Button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </div>
+    </>
   );
 }
